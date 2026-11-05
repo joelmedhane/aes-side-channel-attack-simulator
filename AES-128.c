@@ -4,6 +4,13 @@
 
 #define POLYNOMIAL_REDUCER 0x1B
 
+static const uint8_t mix_matrix[AES_STATE_SIZE][AES_STATE_SIZE] = {
+    {0x02, 0x03, 0x01, 0x01},
+    {0x01, 0x02, 0x03, 0x01},
+    {0x01, 0x01, 0x02, 0x03},
+    {0x03, 0x01, 0x01, 0x02}
+};
+
 
 
 void shift_rows(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]){
@@ -33,7 +40,7 @@ void sub_bytes(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]){
 
         for(int c = 0; c < AES_STATE_SIZE; c++){
 
-            state[r][c] = aes_sbox[state[r][c]];
+            state[r][c] = sbox[state[r][c]];
 
         }
     }
@@ -53,6 +60,28 @@ void add_round_key(
 }
 
 
+
+/**
+ * 
+ * @return we return an in update to make life easier and not have to create new variables and switching storing etc.
+ * 
+ * 
+ */
+
+void xTimes(uint8_t * b){
+
+    if((*b >> 7) == 1){ // chosing shifting instead of b & 2^7 != 0, because shifting is a faster operation than power
+                     // so now if this value == 1 then we know there will be an overflow when we multiply with x.
+        *b <<= 1;
+        *b = *b ^ POLYNOMIAL_REDUCER;
+
+    } else {
+        *b <<= 1;
+    }
+}
+
+
+
 /**
  * 
  * 
@@ -69,7 +98,7 @@ void add_round_key(
  * 
  * 
  */
-void mix_columns(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE], uint8_t roundKey[AES_STATE_SIZE][AES_STATE_SIZE]){
+void mix_columns(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]){
 
 
     /**
@@ -92,7 +121,7 @@ void mix_columns(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE], uint8_t roundKey
             for(int i = 0; i < AES_STATE_SIZE; i++){
 
                 uint8_t gfAcc = 0;
-                uint8_t stateValue = roundKey[r][i];
+                uint8_t stateValue = mix_matrix[r][i];
 
                 for(int j = 0; j < 8; j++){
 
@@ -119,23 +148,5 @@ void mix_columns(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE], uint8_t roundKey
 }
 
 
-/**
- * 
- * @return we return an in update to make life easier and not have to create new variables and switching storing etc.
- * 
- * 
- */
-
-void xTimes(uint8_t * b){
-
-    if((*b >> 7) == 1){ // chosing shifting instead of b & 2^7 != 0, because shifting is a faster operation than power
-                     // so now if this value == 1 then we know there will be an overflow when we multiply with x.
-        *b <<= 1;
-        *b = *b ^ POLYNOMIAL_REDUCER;
-
-    } else {
-        *b <<= 1;
-    }
-}
 
 
