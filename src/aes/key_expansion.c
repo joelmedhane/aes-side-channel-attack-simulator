@@ -1,93 +1,49 @@
-#include <stdint.h>
-#include "AES-128_sbox.h"
+#include "key_expansion.h"
+#include "sbox.h"
 
-#define NK 4
-#define NR 10
-#define WORD_SIZE 4
-#define TOTAL_WORDS 44
+#define AES128_NK 4
 
-static const uint8_t RCON[10] = {
+static const uint8_t rcon[10] = {
     0x01, 0x02, 0x04, 0x08, 0x10,
     0x20, 0x40, 0x80, 0x1B, 0x36
 };
 
-/**
- * @brief Rotates a 4-byte word one byte to the left.
- * @param word The word to rotate in place.
- */
-void rot_word(uint8_t word[4]) {
-
+/* Rotate a word one byte to the left. */
+static void rot_word(uint8_t word[AES_WORD_SIZE]) {
     uint8_t first = word[0];
 
-    for (int i = 1; i < WORD_SIZE; i++) {
+    for (int i = 1; i < AES_WORD_SIZE; i++) {
         word[i - 1] = word[i];
     }
 
-    word[3] = first;
+    word[AES_WORD_SIZE - 1] = first;
 }
 
-/**
- * @brief Applies the AES S-box to each byte of a word.
- * @param word The word to substitute in place.
- */
-void sub_word(uint8_t word[4]) {
-
-    for (int i = 0; i < WORD_SIZE; i++) {
-        word[i] = sbox[word[i]];
-    }
-}
-
-/**
- * @brief Expands a 128-bit AES key into 44 words.
- *
- * @param key Original AES key represented as a 4x4 matrix.
- * @param word Output array containing 44 words of 4 bytes each.
- */
-void key_expansion(
-    const uint8_t key[4][4],
-    uint8_t word[TOTAL_WORDS][WORD_SIZE]
-) {
-
-    int i = 0;
-
-    // Copy the original key into the first four words
-    while (i < NK) {
-
-        for (int j = 0; j < WORD_SIZE; j++) {
-            word[i][j] = key[j][i];
+/* Expand a 128-bit key into 44 words. */
+void key_expansion( const uint8_t key[4][4], uint8_t words[AES_KEY_WORDS][AES_WORD_SIZE]) {
+    /* Copy the original key into the first four words. */
+    for (int i = 0; i < AES128_NK; i++) {
+        for (int j = 0; j < AES_WORD_SIZE; j++) {
+            words[i][j] = key[j][i];
         }
-
-        i++;
     }
 
-    // Generate the remaining 40 words
-    while (i <= 4 * NR + 3) {
+    /* Generate the remaining 40 words. */
+    for (int i = AES128_NK; i < AES_KEY_WORDS; i++) {
+        uint8_t temp[AES_WORD_SIZE];
 
-        uint8_t temp[WORD_SIZE];
-
-        // temp = w[i - 1]
-        for (int j = 0; j < WORD_SIZE; j++) {
-            temp[j] = word[i - 1][j];
+        for (int j = 0; j < AES_WORD_SIZE; j++) {
+            temp[j] = words[i - 1][j];
         }
 
-        if (i % NK == 0) {
-
+        if (i % AES128_NK == 0) {
             rot_word(temp);
-            sub_word(temp);
-
-            // Apply Rcon to the first byte
-            temp[0] ^= RCON[i / NK - 1];
-
-        } else if (NK > 6 && (i % NK) == 4) {
-
-            sub_word(temp);
+            aes_substitute_bytes(temp, AES_WORD_SIZE);
+            temp[0] ^= rcon[i / AES128_NK - 1];
         }
 
-        // w[i] = w[i - Nk] XOR temp
-        for (int j = 0; j < WORD_SIZE; j++) {
-            word[i][j] = word[i - NK][j] ^ temp[j];
+        for (int j = 0; j < AES_WORD_SIZE; j++) {
+            words[i][j] = words[i - AES128_NK][j] ^ temp[j];
         }
-
-        i++;
     }
 }

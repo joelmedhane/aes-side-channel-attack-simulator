@@ -1,6 +1,6 @@
 
-#include "AES-128.h"
-#include "AES-128_sbox.h"
+#include "aes_core.h"
+#include "sbox.h"
 
 #define POLYNOMIAL_REDUCER 0x1B
 
@@ -12,141 +12,88 @@ static const uint8_t mix_matrix[AES_STATE_SIZE][AES_STATE_SIZE] = {
 };
 
 
-
-void shift_rows(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]){
-    // the number of positions the bytes are shifted depends on the row index r 
-    //given index r,c becomes r , (r+c) mod 4 where 0 <= r, c < 4
-    // which means the first row will be unaffacted from the changes here
-
+void shift_rows(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]) {
+    
     for (int r = 1; r < AES_STATE_SIZE; r++) {
-        uint8_t temp[AES_STATE_SIZE];
+        uint8_t original_row[AES_STATE_SIZE];
 
-        // Save the original row
         for (int c = 0; c < AES_STATE_SIZE; c++) {
-            temp[c] = state[r][c];
+            original_row[c] = state[r][c];
         }
 
-        // Shift the row
         for (int c = 0; c < AES_STATE_SIZE; c++) {
-            state[r][c] = temp[(c + r) % 4];
+            state[r][c] = original_row[(c + r) % AES_STATE_SIZE];
         }
     }
 }
 
 
-void sub_bytes(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]){
-    
-    for(int r = 0; r < AES_STATE_SIZE; r++){
-
-        for(int c = 0; c < AES_STATE_SIZE; c++){
-
-            state[r][c] = sbox[state[r][c]];
-
-        }
+void sub_bytes(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]) {
+    for (int r = 0; r < AES_STATE_SIZE; r++) {
+        aes_substitute_bytes(state[r], AES_STATE_SIZE);
     }
 }
 
 
-void add_round_key(
-    uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE],
-    const uint8_t round_key[AES_STATE_SIZE][AES_STATE_SIZE]
-) {
-
-    for(int r = 0; r < AES_STATE_SIZE; r++){
-        for(int c = 0; c < AES_STATE_SIZE; c++){
-            state[r][c] = state[r][c] ^ round_key[r][c];
+void add_round_key(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE], const uint8_t words[44][4], int round) {
+    for (int r = 0; r < AES_STATE_SIZE; r++) {
+        for (int c = 0; c < AES_STATE_SIZE; c++) {
+            state[r][c] ^= words[4 * round + c][r];
         }
     }
 }
 
 
 
-/**
- * 
- * @return we return an in update to make life easier and not have to create new variables and switching storing etc.
- * 
- * 
- */
+/* Multiply by x in GF(2^8), reducing with AES's polynomial. */
+static uint8_t xtime(uint8_t value) {
+    uint8_t high_bit = value & 0x80;
+    value = (uint8_t)(value << 1);
 
-void xTimes(uint8_t * b){
+    if (high_bit) {
+        value ^= POLYNOMIAL_REDUCER;
 
-    if((*b >> 7) == 1){ // chosing shifting instead of b & 2^7 != 0, because shifting is a faster operation than power
-                     // so now if this value == 1 then we know there will be an overflow when we multiply with x.
-        *b <<= 1;
-        *b = *b ^ POLYNOMIAL_REDUCER;
-
-    } else {
-        *b <<= 1;
     }
+
+    return value;
 }
 
 
+static uint8_t gf_multiply(uint8_t a, uint8_t b) {
+    uint8_t result = 0;
 
-/**
- * 
- * 
- * 
- * @argument we know that both matrixes are 4x4 so, there is no need to check the sizes of the matrix
- * 
- * 
- * 
- * the row denotes the round key matrix and the column denotes the state matrix column
- * the most nested loop is for calculating the dot project between different 
- * 
- * I think it can be calculated using only two foor loops and not more but that depends on if i am smart enoguh to do it.
- * 
- * 
- * 
- */
-void mix_columns(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]){
+    for (int bit = 0; bit < 8; bit++) {
 
+        if ((b >> bit) & 1u) {
+            result ^= a;
 
-    /**
-     * we iterate over the columns of the roundKey matrix 
-     * first before so we can store the columns in a temporary array of 4 bytes and then
-     * continsously update it saving storage.
-     * 
-     *  */ 
+        }
 
+        a = xtime(a);
+    }
+    return result;
+}
 
-    
-    uint8_t tempArray [AES_STATE_SIZE]; // only four elements are needed.
+void mix_columns(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]) {
+    /* Each column must be fully computed before the original is overwritten. */
 
-    
+    for (int c = 0; c < AES_STATE_SIZE; c++) {
+        uint8_t new_column[AES_STATE_SIZE];
 
-    for(int c = 0; c < AES_STATE_SIZE; c++){
-        for(int r = 0; r < AES_STATE_SIZE; r++){
-            uint8_t dotAcc = 0;
+        for (int r = 0; r < AES_STATE_SIZE; r++) {
+            uint8_t accumulated = 0;
 
-            for(int i = 0; i < AES_STATE_SIZE; i++){
-
-                uint8_t gfAcc = 0;
-                uint8_t stateValue = mix_matrix[r][i];
-
-                for(int j = 0; j < 8; j++){
-
-                    if ((state[i][c] >> j) & 0x01) {
-                        gfAcc ^= stateValue;
-                    }
-
-                    xTimes(&stateValue);
-
-                }
-
-                dotAcc = dotAcc ^ gfAcc;
+            for (int i = 0; i < AES_STATE_SIZE; i++) {
+                accumulated ^= gf_multiply(mix_matrix[r][i], state[i][c]);
 
             }
 
-            tempArray[r] = dotAcc;
+            new_column[r] = accumulated;
         }
 
         for (int r = 0; r < AES_STATE_SIZE; r++) {
-            state[r][c] = tempArray[r];
+            state[r][c] = new_column[r];
+
         }
     }
-
 }
-
-
-
-

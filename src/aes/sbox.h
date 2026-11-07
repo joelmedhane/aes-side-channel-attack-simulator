@@ -1,8 +1,9 @@
-#ifndef AES_SBOX_H
-#define AES_SBOX_H
+#ifndef AESDROP_SBOX_H
+#define AESDROP_SBOX_H
 
 #include <stdint.h>
+#include <stddef.h>
 
-extern const uint8_t aes_sbox[256];
+void aes_substitute_bytes(uint8_t *bytes, size_t length);
 
 #endif
