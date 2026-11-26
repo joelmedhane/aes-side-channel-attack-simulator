@@ -8,7 +8,8 @@
 void aes128_encrypt(
     const uint8_t plaintext[16],
     const uint8_t words[AES_KEY_WORDS][AES_WORD_SIZE],
-    uint8_t ciphertext[16]
+    uint8_t ciphertext[16],
+    void (*callback)(uint8_t, uint8_t)
 );
 
 #endif

@@ -1,6 +1,7 @@
 
 #include "aes_core.h"
 #include "sbox.h"
+#include <string.h>
 
 #define POLYNOMIAL_REDUCER 0x1B
 
@@ -28,9 +29,19 @@ void shift_rows(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]) {
 }
 
 
-void sub_bytes(uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE]) {
+void sub_bytes( uint8_t state[AES_STATE_SIZE][AES_STATE_SIZE], void (*callback)(uint8_t, uint8_t)) {
     for (int r = 0; r < AES_STATE_SIZE; r++) {
+
+        uint8_t old_row[AES_STATE_SIZE];
+        memcpy(old_row, state[r], AES_STATE_SIZE); // TODO make sure it does not overwrite more memory than allowed
+
         aes_substitute_bytes(state[r], AES_STATE_SIZE);
+
+        if (callback != NULL) {
+            for (int c = 0; c < AES_STATE_SIZE; c++) {
+                callback(old_row[c], state[r][c]);
+            }
+        }
     }
 }
 
